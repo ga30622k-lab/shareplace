@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShareSpace - Modern Workspace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .drag-over { border-color: #000 !important; background-color: #f8fafc !important; }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        
+        .hero-bg {
+            background-size: cover;
+            background-position: center;
+            transition: background-image 1s ease-in-out;
+        }
+
+        /* 내용 숨김(블러) 효과 */
+        .content-hidden {
+            filter: blur(8px);
+            user-select: none;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-zinc-50 min-h-screen font-sans text-zinc-900 select-none">
+
+    <!-- 토스트 알림 컨테이너 -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- 닉네임 모달 -->
+    <div id="nickname-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white text-zinc-900 p-8 rounded-3xl max-w-md w-full shadow-2xl border border-zinc-200 animate-fade-in">
+            <div class="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg">
+                <i data-lucide="user" class="w-6 h-6"></i>
+            </div>
+            <h2 id="modal-title" class="text-2xl font-bold text-center mb-2">닉네임 설정</h2>
+            <p id="modal-desc" class="text-zinc-500 text-center text-sm mb-6">워크스페이스에서 사용할 본인의 닉네임을 입력해주세요.</p>
+            <input type="text" id="nickname-input" class="w-full bg-zinc-100 border border-zinc-300 rounded-xl px-4 py-3.5 mb-4 focus:outline-none focus:border-black font-medium transition-colors" placeholder="닉네임 입력...">
+            <button onclick="saveNickname()" id="modal-btn" class="w-full bg-black hover:bg-zinc-800 text-white font-semibold py-3.5 rounded-xl transition-all shadow-md">
+                입장하기
+            </button>
+        </div>
+    </div>
+
+    <!-- 1. 메인 로비 -->
+    <div id="home-view" class="hero-bg relative min-h-screen flex flex-col items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
+
+        <div class="absolute top-6 right-6 z-20 flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 p-1.5 rounded-full text-white text-xs font-semibold">
+            <button onclick="setLanguage('ko')" id="lang-ko" class="px-3 py-1.5 rounded-full transition-all bg-white text-black shadow">KR</button>
+            <button onclick="setLanguage('en')" id="lang-en" class="px-3 py-1.5 rounded-full transition-all hover:bg-white/20">EN</button>
+        </div>
+
+        <div class="relative z-10 text-center max-w-xl w-full bg-white/95 backdrop-blur-xl p-10 rounded-3xl shadow-2xl border border-zinc-200/50">
+            <div class="w-16 h-16 bg-black text-white rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl">
+                <i data-lucide="layers" class="w-8 h-8"></i>
+            </div>
+            <h1 class="text-3xl font-extrabold tracking-tight mb-3">ShareSpace</h1>
+            <p id="home-subtitle" class="text-zinc-500 text-sm md:text-base mb-8 leading-relaxed">
+                링크 하나로 문서를 공동 작성하고 파일을 공유하는<br>초고속 프라이빗 실시간 워크스페이스
+            </p>
+            
+            <button onclick="createNewWorkspace()" class="w-full bg-black hover:bg-zinc-800 text-white font-semibold py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl shadow-black/10 group">
+                <i data-lucide="plus-circle" class="w-5 h-5 transition-transform group-hover:rotate-90"></i>
+                <span id="home-btn-text">새 워크스페이스 생성하기</span>
+            </button>
+        </div>
+
+        <div class="absolute bottom-6 z-20 flex gap-2" id="gallery-dots"></div>
+    </div>
+
+    <!-- 2. 워크스페이스 방 화면 -->
+    <div id="room-view" class="hidden min-h-screen flex flex-col bg-zinc-50">
+        <header class="bg-white border-b border-zinc-200 sticky top-0 z-30 shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <button onclick="goHome()" class="p-2 hover:bg-zinc-100 rounded-xl text-zinc-600 transition-colors" title="메인으로 가기">
+                        <i data-lucide="home" class="w-5 h-5"></i>
+                    </button>
+                    <div class="h-5 w-px bg-zinc-200"></div>
+                    <div>
+                        <p class="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Workspace ID</p>
+                        <p id="display-room-id" class="font-mono font-bold text-zinc-800 text-sm"></p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-1 bg-zinc-100 border border-zinc-200 p-1 rounded-xl text-xs font-semibold">
+                        <button onclick="setLanguage('ko')" id="room-lang-ko" class="px-2.5 py-1 rounded-lg bg-white text-black shadow-sm">KR</button>
+                        <button onclick="setLanguage('en')" id="room-lang-en" class="px-2.5 py-1 rounded-lg text-zinc-500 hover:text-black">EN</button>
+                    </div>
+
+                    <!-- 잠금 모드 선택 드롭다운 -->
+                    <div class="relative">
+                        <button onclick="toggleLockMenu()" id="lock-btn" class="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 border border-zinc-200">
+                            <i data-lucide="unlock" class="w-4 h-4" id="lock-icon"></i>
+                            <span id="lock-text">잠금 해제됨</span>
+                            <i data-lucide="chevron-down" class="w-3.5 h-3.5 ml-1"></i>
+                        </button>
+
+                        <!-- 잠금 옵션 드롭다운 메뉴 -->
+                        <div id="lock-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white border border-zinc-200 rounded-2xl shadow-xl z-50 py-1.5 animate-fade-in text-xs font-medium">
+                            <button onclick="setLockMode('none')" class="w-full text-left px-4 py-2.5 hover:bg-zinc-100 flex items-center gap-2 text-zinc-700">
+                                <i data-lucide="unlock" class="w-4 h-4 text-emerald-600"></i>
+                                <span id="opt-none">잠금 해제 (전체 허용)</span>
+                            </button>
+                            <button onclick="setLockMode('readonly')" class="w-full text-left px-4 py-2.5 hover:bg-zinc-100 flex items-center gap-2 text-zinc-700">
+                                <i data-lucide="lock" class="w-4 h-4 text-amber-600"></i>
+                                <span id="opt-readonly">읽기 전용 (수정 불가)</span>
+                            </button>
+                            <button onclick="setLockMode('hidden')" class="w-full text-left px-4 py-2.5 hover:bg-zinc-100 flex items-center gap-2 text-zinc-700">
+                                <i data-lucide="eye-off" class="w-4 h-4 text-rose-600"></i>
+                                <span id="opt-hidden">내용 숨김 (프라이빗)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button onclick="toggleColorMode()" id="color-mode-btn" class="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 border border-zinc-200">
+                        <i data-lucide="palette" class="w-4 h-4"></i>
+                        <span id="color-mode-text">컬러 모드</span>
+                    </button>
+
+                    <button onclick="copyShareLink()" class="bg-black hover:bg-zinc-800 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 shadow-sm">
+                        <i data-lucide="link" class="w-4 h-4"></i>
+                        <span id="copy-btn-text">링크 복사</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 메인 콘텐츠 -->
+        <main class="flex-1 max-w-7xl mx-auto w-full p-4 flex flex-col lg:flex-row gap-4 items-stretch h-[calc(100vh-5rem)] overflow-hidden">
+            
+            <!-- 왼쪽: 공유 문서 -->
+            <section id="pane-left" class="bg-white rounded-3xl shadow-sm border border-zinc-200 flex flex-col flex-1 min-w-[300px] overflow-hidden">
+                <div class="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50 rounded-t-3xl">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="file-text" class="w-4 h-4 text-zinc-700"></i>
+                        <h2 class="font-semibold text-zinc-800 text-sm" id="note-title">공유 문서 (실시간)</h2>
+                    </div>
+                    <span id="user-badge" class="text-[11px] font-medium bg-zinc-200/70 text-zinc-700 px-2.5 py-1 rounded-full"></span>
+                </div>
+                <div class="relative flex-1 flex flex-col overflow-hidden">
+                    <textarea id="shared-note" class="flex-1 w-full p-6 resize-none focus:outline-none focus:ring-0 text-sm leading-relaxed bg-transparent transition-all" placeholder="작성하신 내용은 링크 참여자들과 실시간 공유됩니다..."></textarea>
+                    
+                    <!-- 내용 숨김 모드일 때 덮어씌울 안내 배너 -->
+                    <div id="blur-overlay" class="absolute inset-0 bg-zinc-900/10 backdrop-blur-md hidden flex flex-col items-center justify-center text-center p-6">
+                        <div class="w-12 h-12 bg-white text-zinc-900 rounded-2xl flex items-center justify-center shadow-lg mb-3">
+                            <i data-lucide="eye-off" class="w-6 h-6"></i>
+                        </div>
+                        <p class="font-bold text-zinc-800 text-sm mb-1" id="blur-title">프라이빗 보호 모드</p>
+                        <p class="text-zinc-500 text-xs" id="blur-desc">문서 내용이 보안을 위해 숨겨져 있습니다.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 리사이저 경계바 -->
+            <div id="resizer" class="hidden lg:flex items-center justify-center w-2 cursor-col-resize group">
+                <div class="w-1 h-12 bg-zinc-300 rounded-full group-hover:bg-black transition-colors"></div>
+            </div>
+
+            <!-- 오른쪽: 파일 공유 서버 -->
+            <section id="pane-right" class="bg-white rounded-3xl shadow-sm border border-zinc-200 flex flex-col flex-1 min-w-[300px] overflow-hidden">
+                <div class="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50 rounded-t-3xl">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="folder-up" class="w-4 h-4 text-zinc-700"></i>
+                        <h2 class="font-semibold text-zinc-800 text-sm" id="files-title">공용 파일함</h2>
+                    </div>
+                    <span class="text-[11px] text-zinc-400 font-medium bg-zinc-100 px-2 py-0.5 rounded-md">Max 10MB</span>
+                </div>
+                
+                <div class="p-4">
+                    <div id="drop-zone" class="border-2 border-dashed border-zinc-300 rounded-2xl p-6 text-center transition-colors cursor-pointer hover:bg-zinc-50" onclick="triggerFileInput()">
+                        <i data-lucide="upload-cloud" class="w-8 h-8 text-zinc-400 mx-auto mb-2"></i>
+                        <p class="text-xs font-semibold text-zinc-700 mb-1" id="drop-text-1">클릭 또는 파일을 드래그하여 업로드</p>
+                        <p class="text-[10px] text-zinc-400" id="drop-text-2">최대 10MB 지원</p>
+                    </div>
+                    <input type="file" id="file-input" class="hidden" onchange="handleFileSelect(event)">
+                </div>
+
+                <div class="flex-1 overflow-y-auto px-4 pb-4">
+                    <div id="file-list" class="space-y-2.5"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // 다국어 사전 설정
+        const translations = {
+            ko: {
+                homeTitle: "ShareSpace",
+                homeSubtitle: "링크 하나로 문서를 공동 작성하고 파일을 공유하는<br>초고속 프라이빗 실시간 워크스페이스",
+                homeBtn: "새 워크스페이스 생성하기",
+                modalTitle: "닉네임 설정",
+                modalDesc: "워크스페이스에서 사용할 본인의 닉네임을 입력해주세요.",
+                modalBtn: "입장하기",
+                copyBtn: "링크 복사",
+                noteTitle: "공유 문서 (실시간)",
+                filesTitle: "공용 파일함",
+                dropText1: "클릭 또는 파일을 드래그하여 업로드",
+                dropText2: "최대 10MB 지원",
+                notePlaceholder: "작성하신 내용은 링크 참여자들과 실시간 공유됩니다...",
+                lockNone: "잠금 해제됨",
+                lockReadonly: "읽기 전용",
+                lockHidden: "내용 숨김",
+                optNone: "잠금 해제 (전체 허용)",
+                optReadonly: "읽기 전용 (수정 불가)",
+                optHidden: "내용 숨김 (프라이빗)",
+                colorMode: "컬러 모드",
+                monoMode: "단색 모드",
+                blurTitle: "프라이빗 보호 모드",
+                blurDesc: "문서 내용이 보안을 위해 숨겨져 있습니다.",
+                toastLocked: "워크스페이스가 잠겨있어 수정할 수 없습니다.",
+                toastLockChanged: "잠금 모드가 변경되었습니다 🔒",
+                toastCopied: "공유 링크가 클립보드에 복사되었습니다! 🎉"
+            },
+            en: {
+                homeTitle: "ShareSpace",
+                homeSubtitle: "A high-speed private workspace to collaborate on documents<br>and share files with a single link.",
+                homeBtn: "Create New Workspace",
+                modalTitle: "Set Nickname",
+                modalDesc: "Please enter your nickname for this workspace.",
+                modalBtn: "Join Workspace",
+                copyBtn: "Copy Link",
+                noteTitle: "Shared Document (Live)",
+                filesTitle: "Shared Files",
+                dropText1: "Click or drag files here to upload",
+                dropText2: "Up to 10MB supported",
+                notePlaceholder: "Notes written here sync in real-time with everyone...",
+                lockNone: "Unlocked",
+                lockReadonly: "Read Only",
+                lockHidden: "Hidden Content",
+                optNone: "Unlocked (Full Access)",
+                optReadonly: "Read Only (No Edit)",
+                optHidden: "Hidden (Private Mode)",
+                colorMode: "Color Mode",
+                monoMode: "Mono Mode",
+                blurTitle: "Private Protection Mode",
+                blurDesc: "Document contents are hidden for security.",
+                toastLocked: "Workspace is locked. Modifications are disabled.",
+                toastLockChanged: "Lock mode updated 🔒",
+                toastCopied: "Share link copied to clipboard! 🎉"
+            }
+        };
+
+        let currentLang = 'ko';
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            document.getElementById('lang-ko').className = lang === 'ko' ? 'px-3 py-1.5 rounded-full transition-all bg-white text-black shadow' : 'px-3 py-1.5 rounded-full transition-all hover:bg-white/20';
+            document.getElementById('lang-en').className = lang === 'en' ? 'px-3 py-1.5 rounded-full transition-all bg-white text-black shadow' : 'px-3 py-1.5 rounded-full transition-all hover:bg-white/20';
+            document.getElementById('room-lang-ko').className = lang === 'ko' ? 'px-2.5 py-1 rounded-lg bg-white text-black shadow-sm' : 'px-2.5 py-1 rounded-lg text-zinc-500 hover:text-black';
+            document.getElementById('room-lang-en').className = lang === 'en' ? 'px-2.5 py-1 rounded-lg bg-white text-black shadow-sm' : 'px-2.5 py-1 rounded-lg text-zinc-500 hover:text-black';
+
+            const t = translations[lang];
+            document.getElementById('home-subtitle').innerHTML = t.homeSubtitle;
+            document.getElementById('home-btn-text').textContent = t.homeBtn;
+            document.getElementById('modal-title').textContent = t.modalTitle;
+            document.getElementById('modal-desc').textContent = t.modalDesc;
+            document.getElementById('modal-btn').textContent = t.modalBtn;
+            document.getElementById('copy-btn-text').textContent = t.copyBtn;
+            document.getElementById('note-title').textContent = t.noteTitle;
+            document.getElementById('files-title').textContent = t.filesTitle;
+            document.getElementById('drop-text-1').textContent = t.dropText1;
+            document.getElementById('drop-text-2').textContent = t.dropText2;
+            document.getElementById('shared-note').placeholder = t.notePlaceholder;
+            document.getElementById('opt-none').textContent = t.optNone;
+            document.getElementById('opt-readonly').textContent = t.optReadonly;
+            document.getElementById('opt-hidden').textContent = t.optHidden;
+            document.getElementById('blur-title').textContent = t.blurTitle;
+            document.getElementById('blur-desc').textContent = t.blurDesc;
+            
+            updateLockUI();
+            updateColorModeUI();
+        }
+
+        // 갤러리 슬라이더 배경
+        const galleryImages = [
+            'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1920&q=80',
+            'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1920&q=80',
+            'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1920&q=80'
+        ];
+        let currentBgIndex = 0;
+
+        function initGallerySlider() {
+            const homeView = document.getElementById('home-view');
+            const dotsContainer = document.getElementById('gallery-dots');
+            dotsContainer.innerHTML = galleryImages.map((_, i) => `
+                <div onclick="changeBg(${i})" id="dot-${i}" class="w-2.5 h-2.5 rounded-full cursor-pointer transition-all ${i === 0 ? 'bg-white w-6' : 'bg-white/40'}"></div>
+            `).join('');
+            homeView.style.backgroundImage = `url('${galleryImages[0]}')`;
+            setInterval(() => {
+                currentBgIndex = (currentBgIndex + 1) % galleryImages.length;
+                updateBg();
+            }, 5000);
+        }
+
+        function changeBg(index) {
+            currentBgIndex = index;
+            updateBg();
+        }
+
+        function updateBg() {
+            const homeView = document.getElementById('home-view');
+            homeView.style.backgroundImage = `url('${galleryImages[currentBgIndex]}')`;
+            galleryImages.forEach((_, i) => {
+                const dot = document.getElementById(`dot-${i}`);
+                if (dot) {
+                    dot.className = i === currentBgIndex ? 'w-2.5 h-2.5 rounded-full cursor-pointer transition-all bg-white w-6' : 'w-2.5 h-2.5 rounded-full cursor-pointer transition-all bg-white/40';
+                }
+            });
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentRoomId = urlParams.get('room');
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB로 상향
+
+        let userColor = '#000000';
+        let isColorMode = true;
+        let lockMode = 'none'; // 'none' | 'readonly' | 'hidden'
+        let myNickname = '';
+        const presetColors = ['#e11d48', '#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777', '#0284c7'];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            initGallerySlider();
+
+            if (currentRoomId) {
+                const savedNick = localStorage.getItem(`workspace_${currentRoomId}_nick`);
+                if (savedNick) {
+                    myNickname = savedNick;
+                    initRoom(currentRoomId);
+                } else {
+                    document.getElementById('nickname-modal').classList.remove('hidden');
+                }
+            } else {
+                showHome();
+            }
+            initResizer();
+
+            // 외부 클릭 시 잠금 메뉴 닫기
+            window.addEventListener('click', (e) => {
+                const dropdown = document.getElementById('lock-dropdown');
+                const lockBtn = document.getElementById('lock-btn');
+                if (!lockBtn.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
+        });
+
+        function showHome() {
+            document.getElementById('home-view').classList.remove('hidden');
+            document.getElementById('room-view').classList.add('hidden');
+        }
+
+        function createNewWorkspace() {
+            const newRoomId = Math.random().toString(36).substring(2, 10);
+            window.location.href = `?room=${newRoomId}`;
+        }
+
+        function saveNickname() {
+            const input = document.getElementById('nickname-input');
+            const val = input.value.trim();
+            if (!val) {
+                alert('닉네임을 입력해주세요!');
+                return;
+            }
+            myNickname = val;
+            localStorage.setItem(`workspace_${currentRoomId}_nick`, myNickname);
+            document.getElementById('nickname-modal').classList.add('hidden');
+            initRoom(currentRoomId);
+        }
+
+        function goHome() {
+            window.location.href = window.location.pathname;
+        }
+
+        function initRoom(roomId) {
+            document.getElementById('home-view').classList.add('hidden');
+            document.getElementById('room-view').classList.remove('hidden');
+            document.getElementById('display-room-id').textContent = roomId;
+
+            const colorKey = `workspace_${roomId}_color_${myNickname}`;
+            if (!localStorage.getItem(colorKey)) {
+                localStorage.setItem(colorKey, presetColors[Math.floor(Math.random() * presetColors.length)]);
+            }
+            userColor = localStorage.getItem(colorKey);
+
+            document.getElementById('user-badge').textContent = `${myNickname} (${isColorMode ? 'Color' : 'Mono'})`;
+            document.getElementById('user-badge').style.color = isColorMode ? userColor : '#3f3f46';
+
+            const noteElement = document.getElementById('shared-note');
+            const noteKey = `workspace_${roomId}_note`;
+            const filesKey = `workspace_${roomId}_files`;
+            const lockKey = `workspace_${roomId}_lockMode`;
+
+            lockMode = localStorage.getItem(lockKey) || 'none';
+            updateLockUI();
+
+            noteElement.value = localStorage.getItem(noteKey) || '';
+            applyNoteStyle();
+
+            noteElement.addEventListener('input', (e) => {
+                if (lockMode !== 'none') {
+                    showToast(translations[currentLang].toastLocked);
+                    return;
+                }
+                localStorage.setItem(noteKey, e.target.value);
+            });
+
+            window.addEventListener('storage', (e) => {
+                if (e.key === noteKey) {
+                    noteElement.value = e.newValue || '';
+                }
+                if (e.key === filesKey) {
+                    renderFiles();
+                }
+                if (e.key === lockKey) {
+                    lockMode = e.newValue || 'none';
+                    updateLockUI();
+                }
+            });
+
+            setupDragAndDrop();
+            renderFiles();
+        }
+
+        function toggleColorMode() {
+            isColorMode = !isColorMode;
+            updateColorModeUI();
+            applyNoteStyle();
+            document.getElementById('user-badge').textContent = `${myNickname} (${isColorMode ? 'Color' : 'Mono'})`;
+            document.getElementById('user-badge').style.color = isColorMode ? userColor : '#3f3f46';
+        }
+
+        function updateColorModeUI() {
+            document.getElementById('color-mode-text').textContent = isColorMode ? translations[currentLang].colorMode : translations[currentLang].monoMode;
+        }
+
+        function applyNoteStyle() {
+            const noteElement = document.getElementById('shared-note');
+            noteElement.style.color = isColorMode ? userColor : '#18181b';
+        }
+
+        // 잠금 메뉴 토글 및 모드 설정
+        function toggleLockMenu() {
+            const dropdown = document.getElementById('lock-dropdown');
+            dropdown.classList.toggle('hidden');
+        }
+
+        function setLockMode(mode) {
+            lockMode = mode;
+            const lockKey = `workspace_${currentRoomId}_lockMode`;
+            localStorage.setItem(lockKey, lockMode);
+            updateLockUI();
+            document.getElementById('lock-dropdown').classList.add('hidden');
+            showToast(translations[currentLang].toastLockChanged);
+        }
+
+        function updateLockUI() {
+            const lockBtn = document.getElementById('lock-btn');
+            const lockIcon = document.getElementById('lock-icon');
+            const lockText = document.getElementById('lock-text');
+            const noteElement = document.getElementById('shared-note');
+            const blurOverlay = document.getElementById('blur-overlay');
+            const t = translations[currentLang];
+
+            if (lockMode === 'none') {
+                lockBtn.className = "bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 border border-zinc-200";
+                lockIcon.setAttribute('data-lucide', 'unlock');
+                lockText.textContent = t.lockNone;
+                noteElement.removeAttribute('readonly');
+                noteElement.classList.remove('content-hidden');
+                blurOverlay.classList.add('hidden');
+            } else if (lockMode === 'readonly') {
+                lockBtn.className = "bg-amber-100 text-amber-900 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 border border-amber-300";
+                lockIcon.setAttribute('data-lucide', 'lock');
+                lockText.textContent = t.lockReadonly;
+                noteElement.setAttribute('readonly', 'true');
+                noteElement.classList.remove('content-hidden');
+                blurOverlay.classList.add('hidden');
+            } else if (lockMode === 'hidden') {
+                lockBtn.className = "bg-rose-100 text-rose-900 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 border border-rose-300";
+                lockIcon.setAttribute('data-lucide', 'eye-off');
+                lockText.textContent = t.lockHidden;
+                noteElement.setAttribute('readonly', 'true');
+                noteElement.classList.add('content-hidden');
+                blurOverlay.classList.remove('hidden');
+            }
+            lucide.createIcons();
+        }
+
+        function copyShareLink() {
+            navigator.clipboard.writeText(window.location.href).then(() => {
+                showToast(translations[currentLang].toastCopied);
+            });
+        }
+
+        // 크기 조절 리사이저
+        function initResizer() {
+            const resizer = document.getElementById('resizer');
+            const paneLeft = document.getElementById('pane-left');
+            const paneRight = document.getElementById('pane-right');
+            let isResizing = false;
+
+            resizer.addEventListener('mousedown', () => {
+                isResizing = true;
+                document.body.style.cursor = 'col-resize';
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                const containerRect = paneLeft.parentElement.getBoundingClientRect();
+                const totalWidth = containerRect.width;
+                const leftWidth = e.clientX - containerRect.left;
+                const leftPercent = (leftWidth / totalWidth) * 100;
+                if (leftPercent > 20 && leftPercent < 80) {
+                    paneLeft.style.flex = `0 0 ${leftPercent}%`;
+                    paneRight.style.flex = `0 0 ${100 - leftPercent}%`;
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                isResizing = false;
+                document.body.style.cursor = 'default';
+            });
+        }
+
+        function triggerFileInput() {
+            if (lockMode !== 'none') {
+                showToast(translations[currentLang].toastLocked);
+                return;
+            }
+            document.getElementById('file-input').click();
+        }
+
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('drop-zone');
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (lockMode === 'none') dropZone.classList.add('drag-over');
+            });
+            ['dragleave', 'dragend'].forEach(type => {
+                dropZone.addEventListener(type, () => dropZone.classList.remove('drag-over'));
+            });
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+                if (lockMode !== 'none') {
+                    showToast(translations[currentLang].toastLocked);
+                    return;
+                }
+                if (e.dataTransfer.files.length) {
+                    processFile(e.dataTransfer.files[0]);
+                }
+            });
+        }
+
+        function handleFileSelect(event) {
+            if (event.target.files.length) {
+                processFile(event.target.files[0]);
+                event.target.value = '';
+            }
+        }
+
+        function processFile(file) {
+            if (file.size > MAX_FILE_SIZE) {
+                showToast(`File too large. Max 10MB (Current: ${(file.size/(1024*1024)).toFixed(1)}MB)`);
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const fileData = {
+                    id: Date.now().toString(),
+                    name: file.name,
+                    size: file.size,
+                    uploader: myNickname,
+                    data: e.target.result,
+                    timestamp: new Date().getTime()
+                };
+                saveFile(fileData);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function saveFile(fileData) {
+            const filesKey = `workspace_${currentRoomId}_files`;
+            let files = JSON.parse(localStorage.getItem(filesKey) || '[]');
+            files.push(fileData);
+            localStorage.setItem(filesKey, JSON.stringify(files));
+            renderFiles();
+            showToast(`"${fileData.name}" uploaded successfully.`);
+        }
+
+        function deleteFile(fileId) {
+            if (lockMode !== 'none') {
+                showToast(translations[currentLang].toastLocked);
+                return;
+            }
+            const filesKey = `workspace_${currentRoomId}_files`;
+            let files = JSON.parse(localStorage.getItem(filesKey) || '[]');
+            files = files.filter(f => f.id !== fileId);
+            localStorage.setItem(filesKey, JSON.stringify(files));
+            renderFiles();
+        }
+
+        function renderFiles() {
+            const fileList = document.getElementById('file-list');
+            const filesKey = `workspace_${currentRoomId}_files`;
+            const files = JSON.parse(localStorage.getItem(filesKey) || '[]');
+            files.sort((a, b) => b.timestamp - a.timestamp);
+
+            if (files.length === 0) {
+                fileList.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-12 text-zinc-400">
+                        <i data-lucide="inbox" class="w-10 h-10 mb-2 opacity-40"></i>
+                        <p class="text-xs">No files uploaded yet.</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            fileList.innerHTML = files.map(file => `
+                <div class="flex items-center justify-between p-3 bg-white border border-zinc-200 rounded-2xl hover:border-zinc-400 transition-colors group shadow-sm">
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <div class="w-9 h-9 bg-zinc-100 text-zinc-700 rounded-xl flex items-center justify-center shrink-0">
+                            <i data-lucide="file" class="w-4 h-4"></i>
+                        </div>
+                        <div class="overflow-hidden">
+                            <p class="text-xs font-semibold text-zinc-800 truncate" title="${file.name}">${file.name}</p>
+                            <p class="text-[10px] text-zinc-400">${(file.size / (1024*1024) < 1) ? (file.size / 1024).toFixed(1) + ' KB' : (file.size / (1024*1024)).toFixed(1) + ' MB'} • <span class="text-zinc-500 font-medium">${file.uploader || 'Guest'}</span></p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-1 shrink-0">
+                        <a href="${file.data}" download="${file.name}" class="p-2 text-zinc-400 hover:text-black hover:bg-zinc-100 rounded-xl transition-colors" title="Download">
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                        </a>
+                        <button onclick="deleteFile('${file.id}')" class="p-2 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors" title="Delete">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+            
+            lucide.createIcons();
+        }
+
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'bg-zinc-900 text-white px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold flex items-center gap-2 animate-fade-in pointer-events-auto border border-zinc-800';
+            toast.innerHTML = `<i data-lucide="info" class="w-4 h-4"></i> ${message}`;
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                toast.style.transition = 'all 0.3s ease-out';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
